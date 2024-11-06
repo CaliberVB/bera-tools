@@ -1,3 +1,12 @@
+import { ThemeProvider } from '@/components/theme-provider'
+import { Button } from '@/components/ui/button'
+
 export default function App() {
-  return <h1 className="text-3xl font-bold underline">Hello world!</h1>
+  return (
+    <ThemeProvider defaultTheme="dark">
+      <div className="min-h-screen bg-background text-foreground">
+        <Button>Hello</Button>
+      </div>
+    </ThemeProvider>
+  )
 }
