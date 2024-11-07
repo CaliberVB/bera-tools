@@ -1,7 +1,8 @@
 import { ethers } from 'ethers'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useAccount, useConnect } from 'wagmi'
+import { WalletClient } from 'viem'
+import { useAccount, useConnect, useWalletClient } from 'wagmi'
 import { metaMask } from 'wagmi/connectors'
 import * as z from 'zod'
 
@@ -24,6 +25,20 @@ import { Berachef__factory } from './contracts'
 import { IBeraChef } from './contracts/Berachef'
 import { IVault, useListVault } from './data'
 import { useToast } from './hooks/use-toast'
+
+const walletClientToSigner = async (walletClient: WalletClient) => {
+  if (!walletClient.account) {
+    throw new Error('No account found')
+  }
+
+  const { chain } = walletClient
+  if (!chain) {
+    throw new Error('Chain not found')
+  }
+
+  const provider = new ethers.BrowserProvider(window.ethereum)
+  return provider.getSigner()
+}
 
 const createVaultFormSchema = (vaults: IVault[]) => {
   const schema: Record<string, z.ZodTypeAny> = {}
@@ -59,8 +74,6 @@ type FormValues = {
   [key: string]: string
 }
 
-const RPC_URL = 'https://bartio.rpc.berachain.com'
-const provider = new ethers.JsonRpcProvider(RPC_URL)
 const CONTRACT_ADDRESS = '0xfb81E39E3970076ab2693fA5C45A07Cc724C93c2'
 
 const App: React.FC = () => {
@@ -69,6 +82,8 @@ const App: React.FC = () => {
   const { toast } = useToast()
   const { address, isConnected } = useAccount()
   const { connect } = useConnect()
+  const { data: walletClient } = useWalletClient()
+  const [txHash, setTxHash] = useState<string | null>(null)
 
   const handleConnect = async () => {
     try {
@@ -81,13 +96,6 @@ const App: React.FC = () => {
       })
     }
   }
-
-  useEffect(() => {
-    const fetchData = async () => {}
-    if (address) {
-      fetchData()
-    }
-  }, [address])
 
   const form = useForm<FormValues>({
     resolver: zodResolver(createVaultFormSchema(vaults || [])),
@@ -109,36 +117,76 @@ const App: React.FC = () => {
     .toFixed(2)
 
   const onSubmit = async (values: FormValues) => {
-    try {
-      setIsSubmitting(true)
-      const blockNumber = await provider.getBlockNumber()
-      const contract = Berachef__factory.connect(CONTRACT_ADDRESS, provider)
-      const weights: IBeraChef.WeightStruct[] = Object.entries(values)
-        .filter(([_, value]) => {
-          const numValue = parseFloat(value)
-          return !isNaN(numValue) && numValue > 0 // Chỉ lấy những giá trị > 0
-        })
-        .map(([address, value]) => ({
-          receiver: address,
-          percentageNumerator: ethers.parseUnits(value, 2), // Convert string to number
-        }))
-      const tx = await contract.queueNewCuttingBoard(
-        address as string,
-        blockNumber + 100,
-        weights
-      )
-      console.log('🚀 ~ onSubmit ~ tx:', tx)
-
-      toast({
-        title: 'Success',
-        description: 'Your changes have been saved.',
-      })
-    } catch (error) {
-      console.log('🚀 ~ onSubmit ~ _error:', error)
+    if (!walletClient || !address) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        description: 'Please connect your wallet first.',
+      })
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+
+      const signer = await walletClientToSigner(walletClient)
+
+      const contract = Berachef__factory.connect(CONTRACT_ADDRESS, signer)
+
+      const blockNumber = await signer.provider.getBlockNumber()
+
+      const weights: IBeraChef.WeightStruct[] = Object.entries(values)
+        .filter(([_, value]) => {
+          const numValue = parseFloat(value)
+          return !isNaN(numValue) && numValue > 0
+        })
+        .map(([receiverAddress, value]) => ({
+          receiver: receiverAddress,
+          percentageNumerator: ethers.parseUnits(value, 2),
+        }))
+
+      console.log('params', address, blockNumber + 100, weights)
+      const tx = await contract.queueNewCuttingBoard(
+        address,
+        blockNumber + 100,
+        weights
+      )
+
+      setTxHash(tx.hash)
+      console.log('Transaction submitted:', tx.hash)
+      toast({
+        title: 'Transaction Submitted',
+        description: (
+          <div className="mt-2">
+            <div>Please wait for confirmation...</div>
+            <a
+              href={`https://bartio.beratrail.io/tx/${tx.hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:underline mt-2 inline-block"
+            >
+              View on Explorer →
+            </a>
+          </div>
+        ),
+      })
+
+      const receipt = await tx.wait()
+      console.log('Transaction confirmed:', receipt)
+
+      toast({
+        title: 'Success',
+        description: 'Transaction confirmed successfully!',
+      })
+    } catch (error) {
+      console.error('Transaction error:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Transaction failed. Please try again.',
       })
     } finally {
       setIsSubmitting(false)
@@ -315,6 +363,18 @@ const App: React.FC = () => {
                   {isSubmitting ? 'Submitting...' : 'Submit'}
                 </Button>
 
+                {txHash && (
+                  <div className="mt-4 text-center">
+                    <a
+                      href={`https://bartio.beratrail.io/tx/${txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline"
+                    >
+                      View Transaction on Explorer →
+                    </a>
+                  </div>
+                )}
                 {form.formState.errors.root && (
                   <p className="text-sm text-destructive mt-2">
                     {form.formState.errors.root.message}
