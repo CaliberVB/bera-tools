@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { ethers } from 'ethers'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAccount, useConnect } from 'wagmi'
 import { metaMask } from 'wagmi/connectors'
@@ -8,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 
 import { Button } from './components/ui/button'
 import { Card, CardContent } from './components/ui/card'
+import { DefaultLogo } from './components/ui/default-logo'
 import {
   Form,
   FormControl,
@@ -17,107 +19,61 @@ import {
 } from './components/ui/form'
 import { Input } from './components/ui/input'
 import { Spinner } from './components/ui/spinner'
+import { TokenSymbol } from './components/ui/token-symbol'
+import { Berachef__factory } from './contracts'
+import { IBeraChef } from './contracts/Berachef'
 import { IVault, useListVault } from './data'
 import { useToast } from './hooks/use-toast'
-
-const DefaultLogo = () => (
-  <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center">
-    <svg
-      width="32"
-      height="32"
-      viewBox="0 0 144 144"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="h-full w-full p-[15%]"
-    >
-      <path
-        d="M96 96L114 48L132 96C126.78 99.9 120.48 102 114 102C107.52 102 101.22 99.9 96 96Z"
-        stroke="currentColor"
-        strokeWidth="8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      ></path>
-      <path
-        d="M12 96L30 48L48 96C42.78 99.9 36.48 102 30 102C23.52 102 17.22 99.9 12 96Z"
-        stroke="currentColor"
-        strokeWidth="8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      ></path>
-      <path
-        d="M42 126H102"
-        stroke="currentColor"
-        strokeWidth="8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      ></path>
-      <path
-        d="M72 18V126"
-        stroke="currentColor"
-        strokeWidth="8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      ></path>
-      <path
-        d="M18 42H30C42 42 60 36 72 30C84 36 102 42 114 42H126"
-        stroke="currentColor"
-        strokeWidth="8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      ></path>
-    </svg>
-  </div>
-)
-
-const TokenSymbol = ({ symbol }: { symbol: string }) => {
-  const bgColor = `hsl(${Math.random() * 360}, 70%, 20%)`
-  return (
-    <div
-      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium"
-      style={{ backgroundColor: bgColor }}
-    >
-      {symbol.slice(0, 2)}
-    </div>
-  )
-}
 
 const createVaultFormSchema = (vaults: IVault[]) => {
   const schema: Record<string, z.ZodTypeAny> = {}
 
   vaults.forEach((vault) => {
     schema[vault.id] = z
-      .number()
-      .min(0, 'Percentage must be at least 0')
-      .max(100, 'Percentage must be at most 100')
+      .string()
       .optional()
-      .transform((val) => val || 0)
+      .transform((val) => {
+        if (!val) return '0'
+        return val
+      })
+      .refine((val) => {
+        const num = parseFloat(val)
+        return !isNaN(num) && num >= 0 && num <= 100
+      }, 'Percentage must be between 0 and 100')
+      .refine((val) => {
+        return !/\.\d{3,}$/.test(val)
+      }, 'Maximum 2 decimal places allowed')
   })
 
   return z.object(schema).refine((data) => {
-    const total = Object.values(data).reduce(
-      (sum, value) => sum + (value || 0),
-      0
-    )
-    return total === 100
+    const total = Object.values(data).reduce((sum, value) => {
+      if (!value) return sum
+      const numValue = parseFloat(value)
+      return isNaN(numValue) ? sum : sum + numValue
+    }, 0)
+    return Math.abs(total - 100) < 0.01
   }, 'Total percentage must equal 100%')
 }
 
 type FormValues = {
-  [key: string]: number
+  [key: string]: string
 }
+
+const RPC_URL = 'https://bartio.rpc.berachain.com'
+const provider = new ethers.JsonRpcProvider(RPC_URL)
+const CONTRACT_ADDRESS = '0xfb81E39E3970076ab2693fA5C45A07Cc724C93c2'
 
 const App: React.FC = () => {
   const { data: vaults, isLoading } = useListVault()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
   const { address, isConnected } = useAccount()
-  console.log('🚀 ~ address:', address)
   const { connect } = useConnect()
 
   const handleConnect = async () => {
     try {
       connect({ connector: metaMask() })
-    } catch (error) {
+    } catch (_error) {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -126,32 +82,59 @@ const App: React.FC = () => {
     }
   }
 
+  useEffect(() => {
+    const fetchData = async () => {}
+    if (address) {
+      fetchData()
+    }
+  }, [address])
+
   const form = useForm<FormValues>({
     resolver: zodResolver(createVaultFormSchema(vaults || [])),
     defaultValues: vaults?.reduce(
       (acc, vault) => ({
         ...acc,
-        [vault.id]: 0,
+        [vault.id]: '0',
       }),
       {}
     ),
   })
 
-  const totalPercentage = Object.values(form.watch()).reduce(
-    (sum, value) => sum + (value || 0),
-    0
-  )
+  const totalPercentage = Object.values(form.watch())
+    .reduce((sum, value) => {
+      if (!value) return sum
+      const numValue = parseFloat(value)
+      return isNaN(numValue) ? sum : sum + numValue
+    }, 0)
+    .toFixed(2)
 
   const onSubmit = async (values: FormValues) => {
     try {
       setIsSubmitting(true)
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      console.log(values)
+      const blockNumber = await provider.getBlockNumber()
+      const contract = Berachef__factory.connect(CONTRACT_ADDRESS, provider)
+      const weights: IBeraChef.WeightStruct[] = Object.entries(values)
+        .filter(([_, value]) => {
+          const numValue = parseFloat(value)
+          return !isNaN(numValue) && numValue > 0 // Chỉ lấy những giá trị > 0
+        })
+        .map(([address, value]) => ({
+          receiver: address,
+          percentageNumerator: ethers.parseUnits(value, 2), // Convert string to number
+        }))
+      const tx = await contract.queueNewCuttingBoard(
+        address as string,
+        blockNumber + 100,
+        weights
+      )
+      console.log('🚀 ~ onSubmit ~ tx:', tx)
+
       toast({
         title: 'Success',
         description: 'Your changes have been saved.',
       })
     } catch (error) {
+      console.log('🚀 ~ onSubmit ~ _error:', error)
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -227,7 +210,9 @@ const App: React.FC = () => {
                 Total:{' '}
                 <span
                   className={
-                    totalPercentage === 100 ? 'text-green-500' : 'text-red-500'
+                    Math.abs(parseFloat(totalPercentage)) === 100
+                      ? 'text-green-500'
+                      : 'text-red-500'
                   }
                 >
                   {totalPercentage}%
@@ -293,19 +278,20 @@ const App: React.FC = () => {
                             <FormItem className="w-[140px]">
                               <FormControl>
                                 <Input
-                                  type="number"
                                   placeholder="Enter Percentage"
                                   className="text-sm h-9"
                                   {...field}
                                   onChange={(e) => {
                                     const value = e.target.value
-                                    field.onChange(
-                                      value === ''
-                                        ? undefined
-                                        : parseFloat(value)
-                                    )
+
+                                    if (
+                                      value === '' ||
+                                      /^\d*\.?\d{0,2}$/.test(value)
+                                    ) {
+                                      field.onChange(value || '0')
+                                    }
                                   }}
-                                  value={field.value || ''}
+                                  value={field.value === '0' ? '' : field.value}
                                 />
                               </FormControl>
                               <FormMessage className="text-xs" />
@@ -320,7 +306,10 @@ const App: React.FC = () => {
                 <Button
                   type="submit"
                   className="w-full mt-4"
-                  disabled={isSubmitting || totalPercentage !== 100}
+                  disabled={
+                    isSubmitting ||
+                    Math.abs(parseFloat(totalPercentage) - 100) >= 0.01
+                  }
                 >
                   {isSubmitting ? <Spinner className="w-4 h-4 mr-2" /> : null}
                   {isSubmitting ? 'Submitting...' : 'Submit'}
