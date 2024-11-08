@@ -153,7 +153,6 @@ const App: React.FC = () => {
       )
 
       setTxHash(tx.hash)
-      console.log('Transaction submitted:', tx.hash)
       toast({
         title: 'Transaction Submitted',
         description: (
