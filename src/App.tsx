@@ -22,13 +22,12 @@ const App = () => {
   return (
     <div className="container max-w-xl mx-auto py-6">
       <Header />
-
-      <RenderIf condition={!isConnected}>
-        <ConnectWallet />
-      </RenderIf>
+      <ConnectWallet />
 
       <RenderIf condition={isConnected}>
-        <ListVaultForm vaults={vaults || []} />
+        <div className="mt-4">
+          <ListVaultForm vaults={vaults || []} />
+        </div>
       </RenderIf>
 
       <div className="text-center text-sm text-muted-foreground mt-4">
