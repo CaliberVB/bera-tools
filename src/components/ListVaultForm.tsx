@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
+import { BERACHEF_CONTRACT_ADDRESS } from '@/config'
 import { Berachef__factory } from '@/contracts'
 import { IBeraChef } from '@/contracts/Berachef'
 import { IVault } from '@/data'
@@ -15,8 +16,6 @@ import { createVaultFormSchema, walletClientToSigner } from '@/utils/helpers'
 import { zodResolver } from '@hookform/resolvers/zod'
 
 import { VaultCard } from './VaultCard'
-
-const CONTRACT_ADDRESS = '0xfb81E39E3970076ab2693fA5C45A07Cc724C93c2'
 
 interface ListVaultFormProps {
   vaults: IVault[]
@@ -65,7 +64,10 @@ export const ListVaultForm = ({ vaults }: ListVaultFormProps) => {
     try {
       setIsSubmitting(true)
       const signer = await walletClientToSigner(walletClient)
-      const contract = Berachef__factory.connect(CONTRACT_ADDRESS, signer)
+      const contract = Berachef__factory.connect(
+        BERACHEF_CONTRACT_ADDRESS,
+        signer
+      )
       const blockNumber = await signer.provider.getBlockNumber()
 
       const weights: IBeraChef.WeightStruct[] = Object.entries(values)

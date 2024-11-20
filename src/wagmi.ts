@@ -2,6 +2,8 @@ import { defineChain } from 'viem'
 import { createConfig, http } from 'wagmi'
 import { metaMask } from 'wagmi/connectors'
 
+import { BERACHAIN_RPC_URL } from './config'
+
 export const berachain = defineChain({
   id: 80084,
   name: 'Berachain bArtio',
@@ -13,10 +15,10 @@ export const berachain = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://bartio.rpc.berachain.com'],
+      http: [BERACHAIN_RPC_URL],
     },
     public: {
-      http: ['https://bartio.rpc.berachain.com'],
+      http: [BERACHAIN_RPC_URL],
     },
   },
 })
