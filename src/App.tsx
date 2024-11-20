@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi'
 import { ConnectWallet } from '@/components/ConnectWallet'
 import { Header } from '@/components/Header'
 import { ListVaultForm } from '@/components/ListVaultForm'
+import { RenderIf } from '@/components/render-if'
 import { Spinner } from '@/components/ui/spinner'
 import { useListVault } from '@/data'
 
@@ -22,11 +23,13 @@ const App = () => {
     <div className="container max-w-xl mx-auto py-6">
       <Header />
 
-      {!isConnected ? (
+      <RenderIf condition={!isConnected}>
         <ConnectWallet />
-      ) : (
+      </RenderIf>
+
+      <RenderIf condition={isConnected}>
         <ListVaultForm vaults={vaults || []} />
-      )}
+      </RenderIf>
 
       <div className="text-center text-sm text-muted-foreground mt-4">
         Powered by Berachain
